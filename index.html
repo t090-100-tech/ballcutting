@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>たのしくまなぶ！球（きゅう）のひみつ 🏀✨</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            touch-action: manipulation;
+        }
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            background-color: #f8fafc;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow-x: hidden;
+        }
+
+        /* 16:9 Aspect Ratio Container */
+        .aspect-16-9-container {
+            width: 100%;
+            max-width: 1100px;
+            aspect-ratio: 16 / 9;
+            position: relative;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+            touch-action: none;
+        }
+
+        @media (max-aspect-ratio: 16/9) and (max-width: 768px) {
+            .aspect-16-9-container {
+                aspect-ratio: auto;
+                height: 58vh;
+            }
+        }
+
+        /* Overlay Canvas for Touch Slicing */
+        #slice-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            touch-action: none;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(226, 232, 240, 0.9);
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 15px rgba(234, 179, 8, 0.6); }
+            50% { box-shadow: 0 0 30px rgba(234, 179, 8, 0.9); }
+        }
+
+        .max-highlight {
+            animation: pulse-glow 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-100 flex flex-col items-center justify-between p-2 md:p-4 text-slate-800">
+
+    <!-- Header Title & Mode Switch Controls -->
+    <header class="w-full max-w-5xl flex flex-wrap items-center justify-between mb-2 px-2 gap-2">
+        <div class="flex items-center gap-2">
+            <span class="text-2xl md:text-3xl p-1 bg-pink-100 text-pink-500 rounded-2xl">🏀</span>
+            <div>
+                <h1 class="text-lg md:text-2xl font-black text-slate-800 tracking-wide">球（きゅう）のひみつを探ろう！</h1>
+                <p class="text-xs md:text-sm font-bold text-slate-500">ゆびで クルクルまわしたり、まっすぐ きってみよう！</p>
+            </div>
+        </div>
+
+        <!-- Main Mode Switches -->
+        <div class="flex items-center bg-slate-200 p-1 rounded-full shadow-inner flex-wrap gap-1">
+            <button id="btn-mode-rotate" class="flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all bg-white text-pink-600 shadow-sm">
+                <i data-lucide="rotate-3d" class="w-4 h-4"></i> くるくる まわす
+            </button>
+            <button id="btn-mode-slice" class="flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all text-slate-600 hover:text-slate-900">
+                <i data-lucide="scissors" class="w-4 h-4"></i> ゆびで きる
+            </button>
+            <button id="btn-mode-move" class="hidden flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all text-amber-700 bg-amber-100 hover:bg-amber-200">
+                <i data-lucide="move" class="w-4 h-4"></i> パーツを うごかす
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Viewport Area -->
+    <main class="aspect-16-9-container bg-white rounded-3xl overflow-hidden relative border-4 border-slate-200/80">
+        <!-- Three.js Canvas Container -->
+        <div id="canvas-container" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+        <!-- 2D Canvas for Drag Line -->
+        <canvas id="slice-canvas"></canvas>
+
+        <!-- Slice Status Overlay Banner (Centered Cut Alert Only) -->
+        <div id="slice-info-badge" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+            <div id="max-cut-tag" class="hidden glass-panel px-4 py-2 rounded-2xl bg-amber-400/90 text-amber-950 font-black text-xs md:text-sm max-highlight flex items-center gap-1.5 shadow-lg border-2 border-amber-300">
+                ⭐ いちばん おおきな きりくち！（ちゅうしんを とおるよ）
+            </div>
+        </div>
+
+        <!-- Slice Mode Instruction Banner -->
+        <div id="slice-instruction" class="hidden absolute bottom-4 left-1/2 -translate-x-1/2 glass-panel px-5 py-2 rounded-full text-xs md:text-sm font-bold text-pink-600 shadow-md z-20 flex items-center gap-2 pointer-events-none animate-bounce">
+            <i data-lucide="sparkles" class="w-4 h-4"></i> がめんを ゆびや マウスで まっすぐ なぞって きってね！
+        </div>
+
+        <!-- Part Dragging Instruction Banner -->
+        <div id="move-instruction" class="hidden absolute bottom-4 left-1/2 -translate-x-1/2 glass-panel px-5 py-2 rounded-full text-xs md:text-sm font-bold text-amber-700 bg-amber-50 shadow-md z-20 flex items-center gap-2 pointer-events-none">
+            <i data-lucide="hand" class="w-4 h-4"></i> きった パーツを つかんで ゆびで じゆうに うごかせるよ！
+        </div>
+
+        <!-- Concept Overlay Switches -->
+        <div class="absolute top-3 right-3 flex flex-col gap-1.5 z-20">
+            <div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider text-right pr-1">ガイド</div>
+
+            <button id="toggle-center" class="glass-panel hover:bg-rose-50 text-slate-700 font-bold text-xs md:text-sm px-3 py-1.5 md:py-2 rounded-2xl flex items-center justify-between gap-2 shadow-sm border border-slate-200 transition-all">
+                <span class="flex items-center gap-1.5">
+                    <span class="w-3 h-3 rounded-full bg-rose-500 shadow-sm inline-block"></span> ちゅうしん（中心）
+                </span>
+                <span id="badge-center" class="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full">OFF</span>
+            </button>
+
+            <button id="toggle-radius" class="glass-panel hover:bg-sky-50 text-slate-700 font-bold text-xs md:text-sm px-3 py-1.5 md:py-2 rounded-2xl flex items-center justify-between gap-2 shadow-sm border border-slate-200 transition-all">
+                <span class="flex items-center gap-1.5">
+                    <span class="w-3 h-3 rounded-full bg-sky-500 shadow-sm inline-block"></span> はんけい（半径）
+                </span>
+                <span id="badge-radius" class="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full">OFF</span>
+            </button>
+
+            <button id="toggle-diameter" class="glass-panel hover:bg-emerald-50 text-slate-700 font-bold text-xs md:text-sm px-3 py-1.5 md:py-2 rounded-2xl flex items-center justify-between gap-2 shadow-sm border border-slate-200 transition-all">
+                <span class="flex items-center gap-1.5">
+                    <span class="w-3 h-3 rounded-full bg-emerald-500 shadow-sm inline-block"></span> ちょっけい（直径）
+                </span>
+                <span id="badge-diameter" class="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full">OFF</span>
+            </button>
+        </div>
+
+        <!-- Left Camera View Control -->
+        <div class="absolute bottom-3 left-3 flex flex-col gap-2 z-20">
+            <button id="btn-reset-cam" title="みためを もとに もどす" class="glass-panel px-3 py-2 rounded-2xl hover:bg-white text-slate-700 shadow-sm border border-slate-200 transition-all flex items-center gap-1.5 text-xs font-bold">
+                <i data-lucide="refresh-cw" class="w-4 h-4 text-slate-500"></i> むきを もどす
+            </button>
+        </div>
+    </main>
+
+    <!-- Interactive Control Toolbar -->
+    <div class="w-full max-w-5xl my-2 bg-white p-2.5 md:p-3 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center flex-wrap gap-2 w-full md:w-auto">
+            <button id="btn-repair" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs md:text-sm rounded-xl flex items-center gap-2 shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                <i data-lucide="rotate-ccw" class="w-4 h-4"></i> もとの きゅうに もどす
+            </button>
+
+            <button id="btn-auto-separate" class="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs md:text-sm rounded-xl flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                <i data-lucide="unfold-horizontal" class="w-4 h-4"></i> パカッと はなす
+            </button>
+
+            <button id="btn-view-section" class="px-3.5 py-2 bg-pink-50 hover:bg-pink-100 text-pink-700 font-bold text-xs md:text-sm rounded-xl flex items-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                <i data-lucide="eye" class="w-4 h-4"></i> きりくちを まえから みる
+            </button>
+
+            <button id="btn-toggle-half" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs md:text-sm rounded-xl flex items-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                <i data-lucide="eye-off" class="w-4 h-4"></i> かたがわを かくす / だす
+            </button>
+        </div>
+    </div>
+
+    <!-- Interactive Helper Tip Banner -->
+    <div id="radius-interactive-msg" class="hidden w-full max-w-5xl text-xs font-bold text-sky-700 bg-sky-50 px-3 py-2 rounded-xl border border-sky-200 flex items-center justify-center gap-2 animate-pulse mb-1">
+        <i data-lucide="hand" class="w-4 h-4"></i> きゅうの上を ゆびや マウスで タッチすると、はんけいの せんを うごかせるよ！
+    </div>
+
+    <!-- Learning Points Footer (Grade 3 Friendly) -->
+    <footer class="w-full max-w-5xl bg-white rounded-2xl p-3 border border-slate-200 shadow-sm">
+        <div class="text-xs font-black text-slate-400 mb-1.5 uppercase tracking-wider flex items-center gap-1">
+            <i data-lucide="book-open" class="w-3.5 h-3.5"></i> 球（きゅう）の だいじな まなびポイント
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            <div id="point-1" class="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-start gap-2">
+                <span class="font-black text-pink-500 bg-pink-100 rounded-lg px-1.5 py-0.5 text-[11px]">1</span>
+                <span class="text-slate-700 font-bold">どこから みても「まんまるの えん（円）」に みえる かたちが「きゅう」。</span>
+            </div>
+            <div id="point-2" class="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-start gap-2">
+                <span class="font-black text-pink-500 bg-pink-100 rounded-lg px-1.5 py-0.5 text-[11px]">2</span>
+                <span class="text-slate-700 font-bold">きゅうは どこで きっても、きりくち（断面）は かならず「えん（円）」に なる！</span>
+            </div>
+            <div id="point-3" class="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-start gap-2">
+                <span class="font-black text-pink-500 bg-pink-100 rounded-lg px-1.5 py-0.5 text-[11px]">3</span>
+                <span class="text-slate-700 font-bold">ちゅうしんを とおって きった ときが「いちばん おおきな えん」に なる！</span>
+            </div>
+            <div id="point-4" class="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-start gap-2">
+                <span class="font-black text-pink-500 bg-pink-100 rounded-lg px-1.5 py-0.5 text-[11px]">4</span>
+                <span class="text-slate-700 font-bold">はんけいの ながさは どこも おなじ。ちょっけいは はんけいの 2ばい！</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Render Lucide Icons
+        lucide.createIcons();
+
+        // App State Variables
+        const SPHERE_RADIUS = 3.0; // Base sphere radius unit
+        let mode = 'rotate'; // 'rotate' | 'slice' | 'move'
+        let isSliced = false;
+        let hideHalfPlane = false;
+
+        // Concept Guide Visibilities
+        let showCenter = false;
+        let showRadius = false;
+        let showDiameter = false;
+
+        // Cutting Plane Data
+        let currentPlane = null; // Original plane in world space
+        let initialPlaneA = null;
+        let initialPlaneB = null;
+        let currentCutDistance = 0;
+        let capRadiusVal = 0;
+
+        // Target point for interactive radius vector
+        let radiusTargetPoint = new THREE.Vector3(0, SPHERE_RADIUS, 0);
+
+        // Core Three.js Variables
+        let scene, camera, renderer, controls;
+        let mainSphereGroup;
+        let partAGroup, partBGroup;
+        let meshPartA, meshPartB;
+        let capMeshA, capMeshB, capOutlineRing;
+        let centerPointMesh, radiusLineGroup, diameterLineGroup;
+
+        // Dragging Part Variables
+        let isDraggingPart = false;
+        let draggedPart = null;
+        let dragPlane = new THREE.Plane();
+        let dragOffset = new THREE.Vector3();
+        let raycaster = new THREE.Raycaster();
+
+        // DOM Element Cache
+        const container = document.getElementById('canvas-container');
+        const sliceCanvas = document.getElementById('slice-canvas');
+        const sliceCtx = sliceCanvas.getContext('2d');
+
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xffffff);
+
+            const aspect = container.clientWidth / container.clientHeight;
+            camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
+            camera.position.set(0, 2.5, 9);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.localClippingEnabled = true;
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxDistance = 20;
+            controls.minDistance = 4;
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+            dirLight.position.set(6, 12, 8);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            const fillLight = new THREE.DirectionalLight(0xffe4e6, 0.45);
+            fillLight.position.set(-6, -6, -6);
+            scene.add(fillLight);
+
+            // Group Hierarchy
+            mainSphereGroup = new THREE.Group();
+            scene.add(mainSphereGroup);
+
+            partAGroup = new THREE.Group();
+            partBGroup = new THREE.Group();
+            mainSphereGroup.add(partAGroup);
+            mainSphereGroup.add(partBGroup);
+
+            // Build Geometries & Concept Helpers
+            buildSphereGeometries();
+            createCenterPoint();
+            createRadiusGuide();
+            createDiameterGuide();
+
+            // Resize Event Listener
+            window.addEventListener('resize', onWindowResize);
+            onWindowResize();
+
+            // Start Animation Loop
+            animate();
+        }
+
+        function buildSphereGeometries() {
+            while (partAGroup.children.length > 0) partAGroup.remove(partAGroup.children[0]);
+            while (partBGroup.children.length > 0) partBGroup.remove(partBGroup.children[0]);
+
+            const geometry = new THREE.SphereGeometry(SPHERE_RADIUS, 64, 64);
+
+            // Translucent Pink Plastic Material
+            const matA = new THREE.MeshPhysicalMaterial({
+                color: 0xffa0b4,
+                transparent: true,
+                opacity: 0.5,
+                roughness: 0.15,
+                metalness: 0.05,
+                transmission: 0.2,
+                clearcoat: 0.4,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+
+            const matB = matA.clone();
+
+            meshPartA = new THREE.Mesh(geometry, matA);
+            meshPartB = new THREE.Mesh(geometry, matB);
+
+            meshPartA.castShadow = true;
+            meshPartB.castShadow = true;
+
+            meshPartA.userData = { part: 'A' };
+            meshPartB.userData = { part: 'B' };
+
+            partAGroup.add(meshPartA);
+            partBGroup.add(meshPartB);
+        }
+
+        function createCenterPoint() {
+            const geom = new THREE.SphereGeometry(0.18, 32, 32);
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0xf43f5e,
+                emissive: 0xe11d48,
+                emissiveIntensity: 0.7,
+                roughness: 0.2
+            });
+            centerPointMesh = new THREE.Mesh(geom, mat);
+            centerPointMesh.visible = false;
+            mainSphereGroup.add(centerPointMesh);
+        }
+
+        function createRadiusGuide() {
+            radiusLineGroup = new THREE.Group();
+
+            const points = [new THREE.Vector3(0, 0, 0), radiusTargetPoint.clone()];
+            const lineGeom = new THREE.BufferGeometry().setFromPoints(points);
+            const lineMat = new THREE.LineDashedMaterial({
+                color: 0x0284c7,
+                linewidth: 3,
+                scale: 1,
+                dashSize: 0.2,
+                gapSize: 0.1
+            });
+            const line = new THREE.Line(lineGeom, lineMat);
+            line.computeLineDistances();
+            line.name = "radiusLine";
+            radiusLineGroup.add(line);
+
+            const endMarkerGeom = new THREE.SphereGeometry(0.15, 16, 16);
+            const endMarkerMat = new THREE.MeshBasicMaterial({ color: 0x0284c7 });
+            const endMarker = new THREE.Mesh(endMarkerGeom, endMarkerMat);
+            endMarker.position.copy(radiusTargetPoint);
+            endMarker.name = "radiusEndpoint";
+            radiusLineGroup.add(endMarker);
+
+            // Billboard Label
+            const canvas = document.createElement('canvas');
+            canvas.width = 280;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#0284c7';
+            ctx.font = 'Bold 28px sans-serif';
+            ctx.fillText('はんけい (3.0 cm)', 10, 70);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const labelSprite = new THREE.Sprite(spriteMat);
+            labelSprite.scale.set(1.9, 0.95, 1);
+            labelSprite.position.copy(radiusTargetPoint.clone().multiplyScalar(0.55)).add(new THREE.Vector3(0, 0.2, 0));
+            labelSprite.name = "radiusLabel";
+            radiusLineGroup.add(labelSprite);
+
+            radiusLineGroup.visible = false;
+            mainSphereGroup.add(radiusLineGroup);
+        }
+
+        function updateRadiusGuide(newTarget) {
+            radiusTargetPoint.copy(newTarget);
+
+            const line = radiusLineGroup.getObjectByName("radiusLine");
+            if (line) {
+                line.geometry.dispose();
+                line.geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), radiusTargetPoint]);
+                line.computeLineDistances();
+            }
+
+            const endMarker = radiusLineGroup.getObjectByName("radiusEndpoint");
+            if (endMarker) {
+                endMarker.position.copy(radiusTargetPoint);
+            }
+
+            const labelSprite = radiusLineGroup.getObjectByName("radiusLabel");
+            if (labelSprite) {
+                labelSprite.position.copy(radiusTargetPoint.clone().multiplyScalar(0.55)).add(new THREE.Vector3(0, 0.25, 0));
+            }
+        }
+
+        function createDiameterGuide() {
+            diameterLineGroup = new THREE.Group();
+
+            const p1 = new THREE.Vector3(-SPHERE_RADIUS, 0, 0);
+            const p2 = new THREE.Vector3(SPHERE_RADIUS, 0, 0);
+
+            const lineGeomA = new THREE.BufferGeometry().setFromPoints([p1, new THREE.Vector3(0,0,0)]);
+            const lineMatA = new THREE.LineBasicMaterial({ color: 0x06b6d4, linewidth: 4 });
+            const lineA = new THREE.Line(lineGeomA, lineMatA);
+            diameterLineGroup.add(lineA);
+
+            const lineGeomB = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), p2]);
+            const lineMatB = new THREE.LineBasicMaterial({ color: 0x10b981, linewidth: 4 });
+            const lineB = new THREE.Line(lineGeomB, lineMatB);
+            diameterLineGroup.add(lineB);
+
+            const endGeom = new THREE.SphereGeometry(0.14, 16, 16);
+            const endA = new THREE.Mesh(endGeom, new THREE.MeshBasicMaterial({ color: 0x06b6d4 }));
+            endA.position.copy(p1);
+            const endB = new THREE.Mesh(endGeom, new THREE.MeshBasicMaterial({ color: 0x10b981 }));
+            endB.position.copy(p2);
+            diameterLineGroup.add(endA);
+            diameterLineGroup.add(endB);
+
+            const midGeom = new THREE.SphereGeometry(0.1, 16, 16);
+            const midNode = new THREE.Mesh(midGeom, new THREE.MeshBasicMaterial({ color: 0xf43f5e }));
+            diameterLineGroup.add(midNode);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 400;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#059669';
+            ctx.font = 'Bold 24px sans-serif';
+            ctx.fillText('ちょっけい = 6.0 cm (はんけいの 2ばい)', 10, 70);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const labelSprite = new THREE.Sprite(spriteMat);
+            labelSprite.scale.set(2.5, 0.8, 1);
+            labelSprite.position.set(0, 0.4, 0);
+            diameterLineGroup.add(labelSprite);
+
+            diameterLineGroup.visible = false;
+            mainSphereGroup.add(diameterLineGroup);
+        }
+
+        function sliceSphereByPlane(plane) {
+            currentPlane = plane.clone();
+
+            const cutDistance = Math.abs(plane.constant);
+            currentCutDistance = cutDistance;
+
+            if (cutDistance >= SPHERE_RADIUS - 0.05) {
+                return false;
+            }
+
+            initialPlaneA = plane.clone();
+            initialPlaneB = plane.clone().negate();
+
+            meshPartA.material.clippingPlanes = [initialPlaneA.clone()];
+            meshPartB.material.clippingPlanes = [initialPlaneB.clone()];
+
+            capRadiusVal = Math.sqrt(Math.max(0, SPHERE_RADIUS * SPHERE_RADIUS - cutDistance * cutDistance));
+
+            createSolidSliceCaps(plane, cutDistance, capRadiusVal);
+
+            isSliced = true;
+
+            updateUIForSlicedState(capRadiusVal, cutDistance);
+            switchToRotateMode();
+
+            if (cutDistance < 0.25) {
+                triggerCenterCutCelebration();
+            }
+
+            return true;
+        }
+
+        function createSolidSliceCaps(plane, cutDistance, capRadius) {
+            if (capMeshA) partAGroup.remove(capMeshA);
+            if (capMeshB) partBGroup.remove(capMeshB);
+            if (capOutlineRing) mainSphereGroup.remove(capOutlineRing);
+
+            const capGeom = new THREE.CircleGeometry(capRadius, 64);
+
+            const capMatA = new THREE.MeshStandardMaterial({
+                color: 0xffca28, // Golden Amber Cap Fill
+                emissive: 0xd97706,
+                emissiveIntensity: 0.2,
+                side: THREE.DoubleSide,
+                roughness: 0.3
+            });
+            const capMatB = capMatA.clone();
+
+            capMeshA = new THREE.Mesh(capGeom, capMatA);
+            capMeshB = new THREE.Mesh(capGeom, capMatB);
+
+            capMeshA.userData = { part: 'A' };
+            capMeshB.userData = { part: 'B' };
+
+            // Attach section center, radius, and diameter guides directly onto the cut cap surfaces
+            attachSectionGuidesToCap(capMeshA, capRadius);
+            attachSectionGuidesToCap(capMeshB, capRadius);
+
+            const ringGeom = new THREE.RingGeometry(Math.max(0, capRadius - 0.05), capRadius + 0.02, 64);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xe11d48, side: THREE.DoubleSide });
+            capOutlineRing = new THREE.Mesh(ringGeom, ringMat);
+
+            const capCenterPos = plane.normal.clone().multiplyScalar(-plane.constant);
+
+            capMeshA.position.copy(capCenterPos);
+            capMeshB.position.copy(capCenterPos);
+            capOutlineRing.position.copy(capCenterPos);
+
+            const quat = new THREE.Quaternion();
+            quat.setFromUnitVectors(new THREE.Vector3(0, 0, 1), plane.normal);
+
+            capMeshA.quaternion.copy(quat);
+            capMeshB.quaternion.copy(quat);
+            capOutlineRing.quaternion.copy(quat);
+
+            partAGroup.add(capMeshA);
+            partBGroup.add(capMeshB);
+
+            // Reset part positions
+            partAGroup.position.set(0, 0, 0);
+            partBGroup.position.set(0, 0, 0);
+            updateClippingPlanesForPartPositions();
+            updateGuideVisibilities();
+        }
+
+        function attachSectionGuidesToCap(capMesh, capRadius) {
+            const zOffset = 0.02; // Slightly above cap surface to prevent z-fighting
+
+            // 1. Section Center Point
+            const centerGeom = new THREE.SphereGeometry(0.12, 16, 16);
+            const centerMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+            const secCenter = new THREE.Mesh(centerGeom, centerMat);
+            secCenter.position.set(0, 0, zOffset);
+            secCenter.name = "secCenter";
+            secCenter.visible = showCenter;
+            capMesh.add(secCenter);
+
+            // 2. Section Radius Line
+            const radGroup = new THREE.Group();
+            radGroup.name = "secRadiusGroup";
+            
+            const radPoints = [new THREE.Vector3(0, 0, zOffset), new THREE.Vector3(capRadius, 0, zOffset)];
+            const radGeom = new THREE.BufferGeometry().setFromPoints(radPoints);
+            const radMat = new THREE.LineBasicMaterial({ color: 0x0284c7, linewidth: 4 });
+            const radLine = new THREE.Line(radGeom, radMat);
+            radGroup.add(radLine);
+
+            const radEndGeom = new THREE.SphereGeometry(0.1, 16, 16);
+            const radEndMesh = new THREE.Mesh(radEndGeom, new THREE.MeshBasicMaterial({ color: 0x0284c7 }));
+            radEndMesh.position.set(capRadius, 0, zOffset);
+            radGroup.add(radEndMesh);
+
+            radGroup.visible = showRadius;
+            capMesh.add(radGroup);
+
+            // 3. Section Diameter Line (Two-colored for 2x radius visualization)
+            const diaGroup = new THREE.Group();
+            diaGroup.name = "secDiameterGroup";
+
+            const diaPoints1 = [new THREE.Vector3(-capRadius, 0, zOffset), new THREE.Vector3(0, 0, zOffset)];
+            const diaGeom1 = new THREE.BufferGeometry().setFromPoints(diaPoints1);
+            const diaLine1 = new THREE.Line(diaGeom1, new THREE.LineBasicMaterial({ color: 0x06b6d4, linewidth: 4 }));
+            diaGroup.add(diaLine1);
+
+            const diaPoints2 = [new THREE.Vector3(0, 0, zOffset), new THREE.Vector3(capRadius, 0, zOffset)];
+            const diaGeom2 = new THREE.BufferGeometry().setFromPoints(diaPoints2);
+            const diaLine2 = new THREE.Line(diaGeom2, new THREE.LineBasicMaterial({ color: 0x10b981, linewidth: 4 }));
+            diaGroup.add(diaLine2);
+
+            const endA = new THREE.Mesh(radEndGeom, new THREE.MeshBasicMaterial({ color: 0x06b6d4 }));
+            endA.position.set(-capRadius, 0, zOffset);
+            const endB = new THREE.Mesh(radEndGeom, new THREE.MeshBasicMaterial({ color: 0x10b981 }));
+            endB.position.set(capRadius, 0, zOffset);
+            diaGroup.add(endA);
+            diaGroup.add(endB);
+
+            diaGroup.visible = showDiameter;
+            capMesh.add(diaGroup);
+        }
+
+        function updateGuideVisibilities() {
+            // 切断前（球体のとき）は球体ガイドを表示、切断後は球体ガイドを消して切り口（断面）のみ表示
+            if (!isSliced) {
+                if (centerPointMesh) centerPointMesh.visible = showCenter;
+                if (radiusLineGroup) radiusLineGroup.visible = showRadius;
+                if (diameterLineGroup) diameterLineGroup.visible = showDiameter;
+            } else {
+                if (centerPointMesh) centerPointMesh.visible = false;
+                if (radiusLineGroup) radiusLineGroup.visible = false;
+                if (diameterLineGroup) diameterLineGroup.visible = false;
+            }
+
+            // Apply visibility to section caps if sliced
+            [capMeshA, capMeshB].forEach(cap => {
+                if (cap) {
+                    const c = cap.getObjectByName("secCenter");
+                    const r = cap.getObjectByName("secRadiusGroup");
+                    const d = cap.getObjectByName("secDiameterGroup");
+
+                    if (c) c.visible = isSliced ? showCenter : false;
+                    if (r) r.visible = isSliced ? showRadius : false;
+                    if (d) d.visible = isSliced ? showDiameter : false;
+                }
+            });
+        }
+
+        // Mathematical Fix: Update clipping plane constants dynamically so the cut shape NEVER morphs or changes when moved!
+        function updateClippingPlanesForPartPositions() {
+            if (!isSliced || !initialPlaneA || !initialPlaneB) return;
+
+            // Update Plane A relative to Part A position
+            const planeA = meshPartA.material.clippingPlanes[0];
+            planeA.copy(initialPlaneA);
+            planeA.constant = initialPlaneA.constant - planeA.normal.dot(partAGroup.position);
+
+            // Update Plane B relative to Part B position
+            const planeB = meshPartB.material.clippingPlanes[0];
+            planeB.copy(initialPlaneB);
+            planeB.constant = initialPlaneB.constant - planeB.normal.dot(partBGroup.position);
+        }
+
+        let isDrawingLine = false;
+        let lineStart = { x: 0, y: 0 };
+        let lineEnd = { x: 0, y: 0 };
+
+        function getCanvasRelativeCoords(e) {
+            const rect = sliceCanvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        function onPointerDown(e) {
+            if (mode === 'slice') {
+                isDrawingLine = true;
+                try { sliceCanvas.setPointerCapture(e.pointerId); } catch(err){}
+                const coords = getCanvasRelativeCoords(e);
+                lineStart = coords;
+                lineEnd = coords;
+                drawSliceLineGuide();
+            } else if (mode === 'move' || mode === 'rotate') {
+                checkStartPartDrag(e);
+            }
+        }
+
+        function onPointerMove(e) {
+            if (mode === 'slice' && isDrawingLine) {
+                lineEnd = getCanvasRelativeCoords(e);
+                drawSliceLineGuide();
+            } else if (isDraggingPart && draggedPart) {
+                updatePartDrag(e);
+            } else if (mode === 'rotate' && showRadius && e.buttons === 1) {
+                checkRadiusPointerInteract(e);
+            }
+        }
+
+        function onPointerUp(e) {
+            if (mode === 'slice' && isDrawingLine) {
+                isDrawingLine = false;
+                try { sliceCanvas.releasePointerCapture(e.pointerId); } catch(err){}
+                clearSliceCanvas();
+
+                const dx = lineEnd.x - lineStart.x;
+                const dy = lineEnd.y - lineStart.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > 25) {
+                    computePlaneFromScreenLine(lineStart, lineEnd);
+                }
+            } else if (isDraggingPart) {
+                isDraggingPart = false;
+                draggedPart = null;
+                controls.enabled = true;
+            }
+        }
+
+        function checkStartPartDrag(e) {
+            if (!isSliced) return;
+
+            const rect = container.getBoundingClientRect();
+            const mouse = new THREE.Vector2(
+                ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                -((e.clientY - rect.top) / rect.height) * 2 + 1
+            );
+
+            raycaster.setFromCamera(mouse, camera);
+            const targets = [meshPartA, meshPartB, capMeshA, capMeshB].filter(Boolean);
+            const intersects = raycaster.intersectObjects(targets);
+
+            if (intersects.length > 0) {
+                const hitObj = intersects[0].object;
+                const partType = hitObj.userData.part;
+
+                if (partType === 'A') draggedPart = partAGroup;
+                else if (partType === 'B') draggedPart = partBGroup;
+
+                if (draggedPart) {
+                    isDraggingPart = true;
+                    controls.enabled = false;
+
+                    // Plane parallel to camera screen facing user
+                    const camDir = camera.getWorldDirection(new THREE.Vector3()).negate();
+                    dragPlane.setFromNormalAndCoplanarPoint(camDir, intersects[0].point);
+
+                    const intersectionPoint = new THREE.Vector3();
+                    raycaster.ray.intersectPlane(dragPlane, intersectionPoint);
+                    dragOffset.subVectors(draggedPart.position, intersectionPoint);
+                }
+            }
+        }
+
+        function updatePartDrag(e) {
+            if (!draggedPart || !isDraggingPart) return;
+
+            const rect = container.getBoundingClientRect();
+            const mouse = new THREE.Vector2(
+                ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                -((e.clientY - rect.top) / rect.height) * 2 + 1
+            );
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersectionPoint = new THREE.Vector3();
+
+            if (raycaster.ray.intersectPlane(dragPlane, intersectionPoint)) {
+                draggedPart.position.copy(intersectionPoint.add(dragOffset));
+                updateClippingPlanesForPartPositions();
+            }
+        }
+
+        function drawSliceLineGuide() {
+            clearSliceCanvas();
+            sliceCtx.beginPath();
+            sliceCtx.moveTo(lineStart.x, lineStart.y);
+            sliceCtx.lineTo(lineEnd.x, lineEnd.y);
+            sliceCtx.strokeStyle = '#f43f5e';
+            sliceCtx.lineWidth = 5;
+            sliceCtx.lineCap = 'round';
+            sliceCtx.setLineDash([8, 6]);
+            sliceCtx.stroke();
+
+            // Endpoints
+            sliceCtx.fillStyle = '#e11d48';
+            sliceCtx.beginPath();
+            sliceCtx.arc(lineStart.x, lineStart.y, 7, 0, Math.PI * 2);
+            sliceCtx.arc(lineEnd.x, lineEnd.y, 7, 0, Math.PI * 2);
+            sliceCtx.fill();
+        }
+
+        function clearSliceCanvas() {
+            sliceCtx.clearRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        }
+
+        function computePlaneFromScreenLine(p1, p2) {
+            const rect = container.getBoundingClientRect();
+
+            const ndc1 = new THREE.Vector2((p1.x / rect.width) * 2 - 1, -(p1.y / rect.height) * 2 + 1);
+            const ndc2 = new THREE.Vector2((p2.x / rect.width) * 2 - 1, -(p2.y / rect.height) * 2 + 1);
+
+            const ray1 = new THREE.Raycaster();
+            const ray2 = new THREE.Raycaster();
+            ray1.setFromCamera(ndc1, camera);
+            ray2.setFromCamera(ndc2, camera);
+
+            const pt1 = ray1.ray.at(5, new THREE.Vector3());
+            const pt2 = ray2.ray.at(5, new THREE.Vector3());
+            const camPos = camera.position.clone();
+
+            const plane = new THREE.Plane();
+            plane.setFromCoplanarPoints(camPos, pt1, pt2);
+
+            if (plane.normal.length() > 0) {
+                sliceSphereByPlane(plane);
+            }
+        }
+
+        function checkRadiusPointerInteract(e) {
+            const rect = container.getBoundingClientRect();
+            const mouse = new THREE.Vector2(
+                ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                -((e.clientY - rect.top) / rect.height) * 2 + 1
+            );
+
+            const r = new THREE.Raycaster();
+            r.setFromCamera(mouse, camera);
+
+            const intersects = r.intersectObject(meshPartA);
+            if (intersects.length > 0) {
+                updateRadiusGuide(intersects[0].point);
+            }
+        }
+
+        function triggerCenterCutCelebration() {
+            confetti({
+                particleCount: 80,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+
+            document.getElementById('slice-info-badge').classList.remove('hidden');
+            document.getElementById('max-cut-tag').classList.remove('hidden');
+        }
+
+        function updateUIForSlicedState(capRadius, cutDistance) {
+            document.getElementById('btn-repair').disabled = false;
+            document.getElementById('btn-auto-separate').disabled = false;
+            document.getElementById('btn-view-section').disabled = false;
+            document.getElementById('btn-toggle-half').disabled = false;
+            document.getElementById('btn-mode-move').classList.remove('hidden');
+
+            const tag = document.getElementById('max-cut-tag');
+            if (cutDistance >= 0.25) {
+                tag.classList.add('hidden');
+                document.getElementById('slice-info-badge').classList.add('hidden');
+            }
+
+            document.getElementById('point-2').classList.add('bg-pink-100', 'border-pink-300');
+            if (cutDistance < 0.25) {
+                document.getElementById('point-3').classList.add('bg-amber-100', 'border-amber-300');
+            }
+        }
+
+        function resetSphereState() {
+            isSliced = false;
+            hideHalfPlane = false;
+            currentPlane = null;
+            initialPlaneA = null;
+            initialPlaneB = null;
+
+            meshPartA.material.clippingPlanes = null;
+            meshPartB.material.clippingPlanes = null;
+            partAGroup.visible = true;
+            partBGroup.visible = true;
+
+            partAGroup.position.set(0, 0, 0);
+            partBGroup.position.set(0, 0, 0);
+
+            if (capMeshA) partAGroup.remove(capMeshA);
+            if (capMeshB) partBGroup.remove(capMeshB);
+            if (capOutlineRing) mainSphereGroup.remove(capOutlineRing);
+
+            document.getElementById('btn-repair').disabled = true;
+            document.getElementById('btn-auto-separate').disabled = true;
+            document.getElementById('btn-view-section').disabled = true;
+            document.getElementById('btn-toggle-half').disabled = true;
+            document.getElementById('btn-mode-move').classList.add('hidden');
+
+            document.getElementById('slice-info-badge').classList.add('hidden');
+            document.getElementById('max-cut-tag').classList.add('hidden');
+
+            document.getElementById('point-2').classList.remove('bg-pink-100', 'border-pink-300');
+            document.getElementById('point-3').classList.remove('bg-amber-100', 'border-amber-300');
+
+            switchToRotateMode();
+        }
+
+        function switchToRotateMode() {
+            mode = 'rotate';
+            controls.enabled = true;
+            sliceCanvas.style.pointerEvents = 'none';
+
+            const btnRotate = document.getElementById('btn-mode-rotate');
+            const btnSlice = document.getElementById('btn-mode-slice');
+            const btnMove = document.getElementById('btn-mode-move');
+            const sliceInstruct = document.getElementById('slice-instruction');
+            const moveInstruct = document.getElementById('move-instruction');
+
+            btnRotate.className = "flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all bg-white text-pink-600 shadow-sm";
+            btnSlice.className = "flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all text-slate-600 hover:text-slate-900";
+            btnMove.className = "flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all text-amber-700 bg-amber-100 hover:bg-amber-200";
+
+            sliceInstruct.classList.add('hidden');
+            moveInstruct.classList.add('hidden');
+        }
+
+        function switchToSliceMode() {
+            mode = 'slice';
+            controls.enabled = false;
+            sliceCanvas.style.pointerEvents = 'auto';
+
+            const btnRotate = document.getElementById('btn-mode-rotate');
+            const btnSlice = document.getElementById('btn-mode-slice');
+            const btnMove = document.getElementById('btn-mode-move');
+            const sliceInstruct = document.getElementById('slice-instruction');
+            const moveInstruct = document.getElementById('move-instruction');
+
+            btnSlice.className = "flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all bg-pink-500 text-white shadow-sm";
+            btnRotate.className = "flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all text-slate-600 hover:text-slate-900";
+            btnMove.className = "flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all text-amber-700 bg-amber-100 hover:bg-amber-200";
+
+            sliceInstruct.classList.remove('hidden');
+            moveInstruct.classList.add('hidden');
+        }
+
+        function switchToMoveMode() {
+            mode = 'move';
+            controls.enabled = true;
+            sliceCanvas.style.pointerEvents = 'none';
+
+            const btnRotate = document.getElementById('btn-mode-rotate');
+            const btnSlice = document.getElementById('btn-mode-slice');
+            const btnMove = document.getElementById('btn-mode-move');
+            const sliceInstruct = document.getElementById('slice-instruction');
+            const moveInstruct = document.getElementById('move-instruction');
+
+            btnMove.className = "flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all bg-amber-500 text-white shadow-sm";
+            btnRotate.className = "flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all text-slate-600 hover:text-slate-900";
+            btnSlice.className = "flex items-center gap-1.5 px-3 md:px-4 py-1.5 rounded-full font-bold text-xs md:text-sm transition-all text-slate-600 hover:text-slate-900";
+
+            sliceInstruct.classList.add('hidden');
+            moveInstruct.classList.remove('hidden');
+        }
+
+        function setupUIEventListeners() {
+            document.getElementById('btn-mode-rotate').addEventListener('click', switchToRotateMode);
+            document.getElementById('btn-mode-slice').addEventListener('click', switchToSliceMode);
+            document.getElementById('btn-mode-move').addEventListener('click', switchToMoveMode);
+
+            // Concept Toggles
+            document.getElementById('toggle-center').addEventListener('click', () => {
+                showCenter = !showCenter;
+                updateGuideVisibilities();
+                const badge = document.getElementById('badge-center');
+                badge.innerText = showCenter ? 'ON' : 'OFF';
+                badge.className = showCenter ? 'text-[10px] bg-rose-500 text-white px-2 py-0.5 rounded-full font-bold' : 'text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full';
+            });
+
+            document.getElementById('toggle-radius').addEventListener('click', () => {
+                showRadius = !showRadius;
+                updateGuideVisibilities();
+                const badge = document.getElementById('badge-radius');
+                badge.innerText = showRadius ? 'ON' : 'OFF';
+                badge.className = showRadius ? 'text-[10px] bg-sky-500 text-white px-2 py-0.5 rounded-full font-bold' : 'text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full';
+
+                document.getElementById('radius-interactive-msg').classList.toggle('hidden', !showRadius);
+                document.getElementById('point-4').classList.toggle('bg-sky-100', showRadius);
+            });
+
+            document.getElementById('toggle-diameter').addEventListener('click', () => {
+                showDiameter = !showDiameter;
+                updateGuideVisibilities();
+                const badge = document.getElementById('badge-diameter');
+                badge.innerText = showDiameter ? 'ON' : 'OFF';
+                badge.className = showDiameter ? 'text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-bold' : 'text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full';
+            });
+
+            // Camera Reset
+            document.getElementById('btn-reset-cam').addEventListener('click', () => {
+                camera.position.set(0, 2.5, 9);
+                controls.target.set(0, 0, 0);
+                controls.update();
+            });
+
+            // View Section Frontal Camera Alignment
+            document.getElementById('btn-view-section').addEventListener('click', () => {
+                if (!currentPlane) return;
+                const norm = currentPlane.normal.clone().normalize();
+                const targetPos = norm.multiplyScalar(8.5);
+
+                camera.position.copy(targetPos);
+                controls.target.set(0, 0, 0);
+                controls.update();
+            });
+
+            // Auto Separate Button
+            document.getElementById('btn-auto-separate').addEventListener('click', () => {
+                if (!isSliced || !currentPlane) return;
+                const norm = currentPlane.normal.clone().normalize();
+                partAGroup.position.copy(norm.clone().multiplyScalar(1.2));
+                partBGroup.position.copy(norm.clone().multiplyScalar(-1.2));
+                updateClippingPlanesForPartPositions();
+            });
+
+            // Toggle Hide Half
+            document.getElementById('btn-toggle-half').addEventListener('click', () => {
+                hideHalfPlane = !hideHalfPlane;
+                partBGroup.visible = !hideHalfPlane;
+            });
+
+            // Repair Button
+            document.getElementById('btn-repair').addEventListener('click', resetSphereState);
+
+            // Canvas & Touch Events
+            sliceCanvas.addEventListener('pointerdown', onPointerDown);
+            sliceCanvas.addEventListener('pointermove', onPointerMove);
+            window.addEventListener('pointerup', onPointerUp);
+
+            container.addEventListener('pointerdown', onPointerDown);
+            container.addEventListener('pointermove', onPointerMove);
+            window.addEventListener('pointerup', onPointerUp);
+        }
+
+        function onWindowResize() {
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(width, height);
+
+            sliceCanvas.width = width;
+            sliceCanvas.height = height;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            controls.update();
+
+            // Orient Billboard Labels toward Camera
+            if (radiusLineGroup && radiusLineGroup.visible) {
+                const label = radiusLineGroup.getObjectByName("radiusLabel");
+                if (label) label.quaternion.copy(camera.quaternion);
+            }
+
+            if (diameterLineGroup && diameterLineGroup.visible) {
+                diameterLineGroup.children.forEach(child => {
+                    if (child.isSprite) child.quaternion.copy(camera.quaternion);
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('load', () => {
+            initThree();
+            setupUIEventListeners();
+            switchToRotateMode();
+        });
+    </script>
+</body>
+</html>
